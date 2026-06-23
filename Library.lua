@@ -1085,6 +1085,14 @@ function Library:GetIcon(IconName: string)
 end
 
 function Library:GetCustomIcon(IconName: string)
+	if not IconName then
+        return nil
+    end
+
+    if tonumber(IconName) then
+        IconName = string.format("rbxassetid://%s", tostring(IconName))
+    end
+	
     if IsFileBackedIcon(IconName) or (typeof(IconName) == "string" and IconName:match("^rbxassetid://")) then
         -- content:// (getcustomasset) or rbxassetid:// passed directly as an icon
         -- treat as grayscale; no Custom flag so AccentColor tinting is applied.
