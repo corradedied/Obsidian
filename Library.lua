@@ -412,7 +412,6 @@ local Templates = {
         Disabled = false,
         Visible = true,
 
-        -- Right-click on the slider bar to type an exact value.
         AllowEdits = true,
     },
     Dropdown = {
@@ -4592,9 +4591,6 @@ do
                 return
             end
 
-            -- The box always edits the raw numeric Slider.Value, never the formatted
-            -- display text, so this works fine even when Info.FormatDisplayValue is set
-            -- (e.g. a slider that shows "Everything"/"Nothing" instead of numbers).
             SliderEditing = true
             SliderInputBox.Text = tostring(Slider.Value)
             DisplayLabel.Visible = false
@@ -4624,18 +4620,10 @@ do
             Slider:Display()
         end
 
-        -- PRIMARY PATH: Bar.MouseButton2Click is a normal GuiButton event. This is the
-        -- same kind of event already used elsewhere in this library for right-click
-        -- menus (e.g. the KeyPicker), and it does fire correctly in protected GUIs, so
-        -- it's the most reliable trigger.
         Bar.MouseButton2Click:Connect(function()
             OpenSliderInput("Bar.MouseButton2Click")
         end)
 
-        -- FALLBACK / DIAGNOSTIC PATH: global UserInputService.InputBegan with a manual
-        -- bounding-box check. Kept as a fallback in case MouseButton2Click is ever
-        -- swallowed (e.g. by Active being false), and logs every branch so you can see
-        -- exactly where detection fails if right-click edit still isn't working.
         Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input: InputObject)
             if Library.Unloaded then
                 return
