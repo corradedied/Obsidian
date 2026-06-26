@@ -1046,23 +1046,17 @@ function Library:GiveSignal(Connection: RBXScriptConnection | RBXScriptSignal)
     return Connection
 end
 
--- Returns true for strings that are full-color Roblox image assets and should NOT be tinted with AccentColor.
--- Only matches known built-in engine texture paths (rbxasset://textures/...) and CDN thumbnails.
--- Does NOT match getcustomasset output (rbxasset://<hash>/...)
--- or rbxassetid://, both of which are user-supplied and should receive AccentColor.
 function IsValidCustomIcon(Icon: string)
-	return typeof(Icon) == "string"
-		and (
-			Icon:match("^rbxasset://textures/")
-			or Icon:match("roblox%.com/asset/%?id=")
-			or Icon:match("rbxthumb://type=")
-		)
+    return typeof(Icon) == "string"
+        and (
+            Icon:match("^rbxasset://textures/")
+            or Icon:match("roblox%.com/asset/%?id=")
+            or Icon:match("rbxthumb://type=")
+        )
 end
 
--- Returns true for file-backed icons loaded via getcustomasset.
--- Covers both content:// (some skidded executors) and rbxasset://<hash>/... (others).
 local function IsFileBackedIcon(Icon: string)
-	return typeof(Icon) == "string" and (Icon:match("^content://") or Icon:match("^rbxasset://%x+/"))
+    return typeof(Icon) == "string" and (Icon:match("^content://") or Icon:match("^rbxasset://%x+/"))
 end
 
 type Icon = {
@@ -1098,24 +1092,21 @@ function Library:GetIcon(IconName: string)
 end
 
 function Library:GetCustomIcon(IconName: string)
-	if not IconName then
+    if not IconName then
         return nil
     end
 
     if tonumber(IconName) then
         IconName = string.format("rbxassetid://%s", tostring(IconName))
     end
-	
+
     if IsFileBackedIcon(IconName) or (typeof(IconName) == "string" and IconName:match("^rbxassetid://")) then
-        -- content:// (getcustomasset) or rbxassetid:// passed directly as an icon
-        -- treat as grayscale; no Custom flag so AccentColor tinting is applied.
         return {
             Url = IconName,
             ImageRectOffset = Vector2.zero,
             ImageRectSize = Vector2.zero,
         }
     elseif IsValidCustomIcon(IconName) then
-        -- Full-color built-in asset (rbxasset://, rbxthumb://, etc.) to preserve original colors.
         return {
             Url = IconName,
             ImageRectOffset = Vector2.zero,
@@ -1225,9 +1216,7 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
     SafeParentUI(UI, gethui)
 end
 
--- Destroy previous interface instances
-
-for _, prevUI in pairs(gethui():GetChildren()) do
+for _, prevUI in gethui():GetChildren() do
     if prevUI:IsA("ScreenGui") and prevUI.Name == "Obsidian" then
         prevUI:Destroy()
     end
