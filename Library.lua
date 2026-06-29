@@ -184,6 +184,8 @@ local Library = {
     KeybindToggles = {},
 
     Notifications = {},
+    NotificationQueue = {},
+    MaxNotifications = 10,
     Dialogues = {},
     ActiveLoading = nil,
     ActiveDialog = nil,
@@ -329,6 +331,7 @@ local Templates = {
         CornerRadius = 4,
         NotifySide = "Right",
         ShowCustomCursor = true,
+        MaxNotifications = 10,
 
         Font = Enum.Font.Code,
         ToggleKeybind = Enum.KeyCode.RightControl,
@@ -7825,6 +7828,11 @@ function Library:Notify(...)
 
         task.delay(Library.NotifyTweenInfo.Time, function()
             Library.Notifications[FakeBackground] = nil
+
+            local Idx = table.find(Library.NotificationQueue, FakeBackground)
+            if Idx then
+                table.remove(Library.NotificationQueue, Idx)
+            end
             FakeBackground:Destroy()
         end)
     end
@@ -7869,6 +7877,17 @@ function Library:Notify(...)
     end
 
     Library.Notifications[FakeBackground] = Data
+    table.insert(Library.NotificationQueue, FakeBackground)
+
+    if Library.MaxNotifications > 0 then
+        while #Library.NotificationQueue > Library.MaxNotifications do
+            local Oldest = table.remove(Library.NotificationQueue, 1)
+            local OldestData = Library.Notifications[Oldest]
+            if OldestData and not OldestData.Persist and not OldestData.Destroyed then
+                OldestData:Destroy()
+            end
+        end
+    end
 
     FakeBackground.Visible = true
     TweenService:Create(Holder, Library.NotifyTweenInfo, {
@@ -7940,6 +7959,7 @@ function Library:CreateWindow(WindowInfo)
     Library.CornerRadius = WindowInfo.CornerRadius
     Library:SetNotifySide(WindowInfo.NotifySide)
     Library.ShowCustomCursor = WindowInfo.ShowCustomCursor
+    Library.MaxNotifications = WindowInfo.MaxNotifications
     Library.Scheme.Font = WindowInfo.Font
     Library.ToggleKeybind = WindowInfo.ToggleKeybind
     Library.GlobalSearch = WindowInfo.GlobalSearch
@@ -11275,6 +11295,7 @@ function Library:Unload()
     table.clear(Library.SpecificCorners)
 
     table.clear(Library.Notifications)
+    table.clear(Library.NotificationQueue)
     table.clear(Library.Dialogues)
     table.clear(Library.DraggableElements)
     table.clear(Library.KeybindToggles)
