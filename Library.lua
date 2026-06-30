@@ -195,6 +195,15 @@ local Library = {
     TweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     NotifyTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
+    Animations = {
+        ToggleWindow = false,
+        TabAnimations = false,
+    },
+    WindowAnimationInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+
+    TabTransitionInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    TabWipeOffset = 26,
+
     Toggled = false,
     Unloaded = false,
 
@@ -332,7 +341,14 @@ local Templates = {
 
         Font = Enum.Font.Code,
         ToggleKeybind = Enum.KeyCode.RightControl,
-        
+
+        Animations = {
+            ToggleWindow = false,
+            TabAnimations = false,
+        },
+        TabTransitionTime = 0.22,
+        TabWipeOffset = 26,
+
         ShowMobileButtons = true,
         MobileButtonsSide = "Left",
 
@@ -1715,6 +1731,98 @@ function Library:AddBlank(Frame: GuiObject, Size: UDim2)
         Size = Size or UDim2.fromScale(0, 0),
         Parent = Frame,
     })
+end
+
+local ActiveTabWipeTweens = setmetatable({}, { __mode = "k" })
+local SleeveBaseZIndex = setmetatable({}, { __mode = "k" })
+
+function Library:WrapTabSleeve(TabContainer: GuiObject, Parent: GuiObject)
+    local Sleeve = New("CanvasGroup", {
+        BackgroundTransparency = 1,
+        ClipsDescendants = true,
+        GroupTransparency = 0,
+        Size = UDim2.fromScale(1, 1),
+        Visible = false,
+        Parent = Parent,
+    })
+
+    TabContainer.Parent = Sleeve
+    TabContainer.Position = UDim2.fromScale(0, 0)
+    TabContainer.Size = UDim2.fromScale(1, 1)
+
+    SleeveBaseZIndex[Sleeve] = Sleeve.ZIndex
+
+    return Sleeve
+end
+
+function Library:PlayTabWipe(Sleeve: GuiObject, Showing: boolean, OnComplete: (() -> ())?)
+    if not Sleeve then
+        if OnComplete then
+            OnComplete()
+        end
+        return
+    end
+
+    local Existing = ActiveTabWipeTweens[Sleeve]
+    if Existing then
+        Existing:Cancel()
+        ActiveTabWipeTweens[Sleeve] = nil
+    end
+
+    local BaseZIndex = SleeveBaseZIndex[Sleeve] or Sleeve.ZIndex
+
+    if not (Library.Animations and Library.Animations.TabAnimations) then
+        Sleeve.Visible = Showing
+        Sleeve.GroupTransparency = Showing and 0 or 1
+        Sleeve.Position = UDim2.fromScale(0, 0)
+        Sleeve.ZIndex = BaseZIndex
+        if OnComplete then
+            OnComplete()
+        end
+        return
+    end
+
+    local Info = Library.TabTransitionInfo or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local Offset = Library.TabWipeOffset or 26
+
+    if Showing then
+        Sleeve.ZIndex = BaseZIndex + 1
+        Sleeve.GroupTransparency = 1
+        Sleeve.Position = UDim2.fromOffset(Offset, 0)
+        Sleeve.Visible = true
+
+        local Tween = TweenService:Create(Sleeve, Info, {
+            GroupTransparency = 0,
+            Position = UDim2.fromScale(0, 0),
+        })
+        ActiveTabWipeTweens[Sleeve] = Tween
+        Tween:Play()
+
+        local Connection
+        Connection = Tween.Completed:Connect(function(PlaybackState)
+            if Connection then
+                Connection:Disconnect()
+            end
+            if ActiveTabWipeTweens[Sleeve] == Tween then
+                ActiveTabWipeTweens[Sleeve] = nil
+            end
+            if PlaybackState == Enum.PlaybackState.Cancelled then
+                return
+            end
+            Sleeve.ZIndex = BaseZIndex
+            if OnComplete then
+                OnComplete()
+            end
+        end)
+    else
+        Sleeve.GroupTransparency = 1
+        Sleeve.Visible = false
+        Sleeve.Position = UDim2.fromScale(0, 0)
+        Sleeve.ZIndex = BaseZIndex
+        if OnComplete then
+            OnComplete()
+        end
+    end
 end
 
 --// Deprecated \\--
@@ -7911,6 +8019,23 @@ function Library:Notify(...)
 end
 
 function Library:CreateWindow(WindowInfo)
+    --// Old Naming (pre-Validate) \\--
+    if typeof(WindowInfo) == "table" then
+        if typeof(WindowInfo.Animations) == "boolean" then
+            local ToggleWindow = WindowInfo.Animations
+            WindowInfo.Animations = {
+                ToggleWindow = ToggleWindow,
+                TabAnimations = ToggleWindow,
+            }
+        end
+        if typeof(WindowInfo.TabAnimations) == "boolean" and typeof(WindowInfo.Animations) ~= "table" then
+            WindowInfo.Animations = {}
+        end
+        if typeof(WindowInfo.TabAnimations) == "boolean" and typeof(WindowInfo.Animations) == "table" and WindowInfo.Animations.TabAnimations == nil then
+            WindowInfo.Animations.TabAnimations = WindowInfo.TabAnimations
+        end
+    end
+
     WindowInfo = Library:Validate(WindowInfo, Templates.Window)
     local ViewportSize: Vector2 = workspace.CurrentCamera.ViewportSize
     if RunService:IsStudio() and ViewportSize.X <= 5 and ViewportSize.Y <= 5 then
@@ -7954,6 +8079,14 @@ function Library:CreateWindow(WindowInfo)
     Library.Scheme.Font = WindowInfo.Font
     Library.ToggleKeybind = WindowInfo.ToggleKeybind
     Library.GlobalSearch = WindowInfo.GlobalSearch
+    Library.Animations = WindowInfo.Animations
+
+    Library.TabTransitionInfo = TweenInfo.new(
+        math.max(0, WindowInfo.TabTransitionTime or 0.22),
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.Out
+    )
+    Library.TabWipeOffset = WindowInfo.TabWipeOffset or 26
 
     local IsDefaultSearchbarSize = WindowInfo.SearchbarSize == UDim2.fromScale(1, 1)
     local MainFrame
@@ -8319,6 +8452,7 @@ function Library:CreateWindow(WindowInfo)
             BackgroundColor3 = function()
                 return Library:GetBetterColor(Library.Scheme.BackgroundColor, 1)
             end,
+            ClipsDescendants = true,
             Name = "Container",
             Position = UDim2.new(1, 0, 0, 49),
             Size = UDim2.new(1, -InitialLeftWidth - 1, 1, -70),
@@ -8337,6 +8471,8 @@ function Library:CreateWindow(WindowInfo)
 
     --// Window Table \\--
     local Window = {}
+    local Fading = false
+    local TransparencyCache = {}
 
     local function SetUICorner(UICorner, Corner, HalfCurrent, HalfValue, Value)
         local Current = UICorner[Corner]
@@ -8511,6 +8647,7 @@ function Library:CreateWindow(WindowInfo)
         local TabIcon
 
         local TabContainer
+        local TabSleeve
         local TabLeft
         local TabRight
 
@@ -8567,7 +8704,7 @@ function Library:CreateWindow(WindowInfo)
             TabContainer = New("Frame", {
                 BackgroundTransparency = 1,
                 Size = UDim2.fromScale(1, 1),
-                Visible = false,
+                Visible = true,
                 Parent = Container,
             })
 
@@ -8639,6 +8776,8 @@ function Library:CreateWindow(WindowInfo)
                 })
             end
         end
+
+        TabSleeve = Library:WrapTabSleeve(TabContainer, Container)
 
         --// Warning Box \\--
         local WarningBoxHolder = New("Frame", {
@@ -9418,6 +9557,10 @@ function Library:CreateWindow(WindowInfo)
         end
 
         function Tab:Show()
+            if Library.ActiveTab == Tab then
+                return
+            end
+
             if Library.ActiveTab then
                 Library.ActiveTab:Hide()
             end
@@ -9438,7 +9581,7 @@ function Library:CreateWindow(WindowInfo)
                 Window:ShowTabInfo(Name, Description)
             end
 
-            TabContainer.Visible = true
+            Library:PlayTabWipe(TabSleeve, true)
             Tab:RefreshSides()
 
             Library.ActiveTab = Tab
@@ -9460,7 +9603,7 @@ function Library:CreateWindow(WindowInfo)
                     ImageTransparency = 0.5,
                 }):Play()
             end
-            TabContainer.Visible = false
+            Library:PlayTabWipe(TabSleeve, false)
 
             Window:HideTabInfo()
 
@@ -9504,7 +9647,9 @@ function Library:CreateWindow(WindowInfo)
                 end
             end
 
-            if TabContainer then
+            if TabSleeve then
+                TabSleeve:Destroy()
+            elseif TabContainer then
                 TabContainer:Destroy()
             end
 
@@ -9563,6 +9708,7 @@ function Library:CreateWindow(WindowInfo)
         local TabIcon
 
         local TabContainer
+        local TabSleeve
 
         Icon = if Icon == "key" then KeyIcon else Library:GetCustomIcon(Icon)
         do
@@ -9619,7 +9765,7 @@ function Library:CreateWindow(WindowInfo)
                 CanvasSize = UDim2.fromScale(0, 0),
                 ScrollBarThickness = 0,
                 Size = UDim2.fromScale(1, 1),
-                Visible = false,
+                Visible = true,
                 Parent = Container,
             })
             New("UIListLayout", {
@@ -9634,6 +9780,8 @@ function Library:CreateWindow(WindowInfo)
                 Parent = TabContainer,
             })
         end
+
+        TabSleeve = Library:WrapTabSleeve(TabContainer, Container)
 
         --// Tab Table \\--
         local Tab = {
@@ -9712,7 +9860,9 @@ function Library:CreateWindow(WindowInfo)
         end
         
         function Tab:Destroy()
-            if TabContainer then
+            if TabSleeve then
+                TabSleeve:Destroy()
+            elseif TabContainer then
                 TabContainer:Destroy()
             end
 
@@ -9750,6 +9900,10 @@ function Library:CreateWindow(WindowInfo)
         end
 
         function Tab:Show()
+            if Library.ActiveTab == Tab then
+                return
+            end
+
             if Library.ActiveTab then
                 Library.ActiveTab:Hide()
             end
@@ -9765,7 +9919,7 @@ function Library:CreateWindow(WindowInfo)
                     ImageTransparency = 0,
                 }):Play()
             end
-            TabContainer.Visible = true
+            Library:PlayTabWipe(TabSleeve, true)
 
             if Description then
                 Window:ShowTabInfo(Name, Description)
@@ -9792,7 +9946,7 @@ function Library:CreateWindow(WindowInfo)
                     ImageTransparency = 0.5,
                 }):Play()
             end
-            TabContainer.Visible = false
+            Library:PlayTabWipe(TabSleeve, false)
 
             Window:HideTabInfo()
 
@@ -10314,6 +10468,10 @@ function Library:CreateWindow(WindowInfo)
     end
 
     function Window:Toggle(Value: boolean?)
+        if Fading then
+            return
+        end
+
         if Library.ActiveLoading then
             if Value == true then
                 return
@@ -10330,7 +10488,61 @@ function Library:CreateWindow(WindowInfo)
             Library.Toggled = not Library.Toggled
         end
 
-        MainFrame.Visible = Library.Toggled
+        if Library.Animations and Library.Animations.ToggleWindow then
+            local FadeTime = Library.WindowAnimationInfo.Time
+            Fading = true
+
+            if Library.Toggled then
+                MainFrame.Visible = true
+            end
+
+            local function FadeInstance(Desc, Properties)
+                local Cache = TransparencyCache[Desc]
+                if not Cache then
+                    Cache = {}
+                    TransparencyCache[Desc] = Cache
+                end
+
+                for _, Prop in Properties do
+                    if not Library.Toggled then
+                        Cache[Prop] = Desc[Prop]
+                    end
+
+                    if Cache[Prop] ~= nil and Cache[Prop] ~= 1 then
+                        TweenService:Create(Desc, Library.WindowAnimationInfo, {
+                            [Prop] = Library.Toggled and Cache[Prop] or 1,
+                        }):Play()
+                    end
+                end
+            end
+
+            FadeInstance(MainFrame, { "BackgroundTransparency" })
+
+            for _, Desc in MainFrame:GetDescendants() do
+                local Properties = {}
+
+                if Desc:IsA("GuiObject") then
+                    table.insert(Properties, "BackgroundTransparency")
+                end
+
+                if Desc:IsA("ImageLabel") or Desc:IsA("ImageButton") then
+                    table.insert(Properties, "ImageTransparency")
+                elseif Desc:IsA("TextLabel") or Desc:IsA("TextBox") or Desc:IsA("TextButton") then
+                    table.insert(Properties, "TextTransparency")
+                elseif Desc:IsA("UIStroke") then
+                    table.insert(Properties, "Transparency")
+                end
+
+                FadeInstance(Desc, Properties)
+            end
+
+            task.delay(FadeTime, function()
+                MainFrame.Visible = Library.Toggled
+                Fading = false
+            end)
+        else
+            MainFrame.Visible = Library.Toggled
+        end
 
         if WindowInfo.UnlockMouseWhileOpen then
             ModalElement.Modal = Library.Toggled
