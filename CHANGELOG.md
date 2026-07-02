@@ -1,3 +1,24 @@
+## 02.07.2026
+
+```diff
+[changes]
++ Save Manager and Theme Manager refactored
++ Save Manager now saves the keybind menu visibility and position
++ Save Manager and Theme Manager now show what theme is the default and what config is autoloaded inside the dropdowns
+
+[fixes]
++ Fixed dialogs buttons breaking with Destructive buttons if ThemeManager:SetDefaultTheme was used
+```
+
+## 01.07.2026
+
+```diff
+[features]
++ Confirmation dialogs to destructive actions in Save Manager and Theme Manager
++ Groupbox collapsed state now saves in configuration files
+```
+
+
 ## 28.06.2026
 
 ```diff
