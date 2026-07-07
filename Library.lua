@@ -4315,16 +4315,69 @@ do
             })
         )
 
+        local CopyColorOriginalText = CopyColorButton.Text
+        local PasteColorOriginalText = PasteColorButton.Text
+        local CopyColorResetId = 0
+        local PasteColorResetId = 0
+
+        table.insert(ColorPicker.Connections, CopyColorButton.MouseEnter:Connect(function()
+            TweenService:Create(CopyColorButton, Library.TweenInfo, {
+                BackgroundColor3 = Library:GetBetterColor(Library.Scheme.MainColor, 10),
+            }):Play()
+        end))
+
+        table.insert(ColorPicker.Connections, CopyColorButton.MouseLeave:Connect(function()
+            TweenService:Create(CopyColorButton, Library.TweenInfo, {
+                BackgroundColor3 = Library.Scheme.MainColor,
+            }):Play()
+        end))
+
+        table.insert(ColorPicker.Connections, PasteColorButton.MouseEnter:Connect(function()
+            TweenService:Create(PasteColorButton, Library.TweenInfo, {
+                BackgroundColor3 = Library:GetBetterColor(Library.Scheme.MainColor, 10),
+            }):Play()
+        end))
+
+        table.insert(ColorPicker.Connections, PasteColorButton.MouseLeave:Connect(function()
+            TweenService:Create(PasteColorButton, Library.TweenInfo, {
+                BackgroundColor3 = Library.Scheme.MainColor,
+            }):Play()
+        end))
+
         table.insert(ColorPicker.Connections, CopyColorButton.MouseButton1Click:Connect(function()
             Library.CopiedColor = { ColorPicker.Value, ColorPicker.Transparency }
+
+            CopyColorResetId += 1
+            local ThisResetId = CopyColorResetId
+            CopyColorButton.Text = "Copied color"
+
+            task.delay(1, function()
+                if ColorPicker.Destroyed or ThisResetId ~= CopyColorResetId then
+                    return
+                end
+
+                CopyColorButton.Text = CopyColorOriginalText
+            end)
         end))
 
         table.insert(ColorPicker.Connections, PasteColorButton.MouseButton1Click:Connect(function()
+            PasteColorResetId += 1
+            local ThisResetId = PasteColorResetId
+
             if not Library.CopiedColor then
-                return
+                PasteColorButton.Text = "Nothing to paste"
+            else
+                ColorPicker:SetValueRGB(Library.CopiedColor[1], Library.CopiedColor[2])
+                PasteColorButton.Text = "Pasted color"
             end
 
-            ColorPicker:SetValueRGB(Library.CopiedColor[1], Library.CopiedColor[2])
+            task.delay(1, function()
+                if ColorPicker.Destroyed or ThisResetId ~= PasteColorResetId then
+                    return
+                end
+
+                PasteColorButton.Text = PasteColorOriginalText
+            end)
         end))
 
         --// End \\--
