@@ -194,6 +194,7 @@ local Library = {
     --// Notifications \\--
     Notifications = {},
     NotificationQueue = {},
+    PendingNotifications = {},
     MaxNotifications = 10,
     NotifySide = "Right",
     NotifyTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -8008,44 +8009,9 @@ function Library:SetNotifySide(Side: string)
     Library:UpdateNotificationPositions(true)
 end
 
-function Library:Notify(...)
-    local Data = {}
-    local Info = select(1, ...)
-
-    if typeof(Info) == "table" then
-        Data.Title = tostring(Info.Title)
-        Data.TitleColor = Info.TitleColor
-
-        Data.Description = tostring(Info.Description)
-        Data.DescriptionColor = Info.DescriptionColor
-
-        Data.Time = Info.Time or 5
-        Data.SoundId = Info.SoundId
-        Data.Steps = Info.Steps
-        Data.Persist = Info.Persist
-
-        Data.Icon = Info.Icon
-        Data.BigIcon = Info.BigIcon
-        Data.IconColor = Info.IconColor
-
-        Data.Volume = tonumber(Info.Volume) or 3
-    else
-        Data.Description = tostring(Info)
-        Data.Time = select(2, ...) or 5
-        Data.SoundId = select(3, ...)
-        Data.Volume = select(4, ...) or 3
-    end
-    Data.Destroyed = false
-
-    local DeletedInstance = false
-    local DeleteConnection = nil
-    if typeof(Data.Time) == "Instance" then
-        DeleteConnection = Data.Time.Destroying:Connect(function()
-            DeletedInstance = true
-
-            DeleteConnection:Disconnect()
-            DeleteConnection = nil
-        end)
+local function SpawnNotification(Data)
+    if Data.Destroyed then
+        return Data
     end
 
     local FakeBackground = New("Frame", {
@@ -8243,14 +8209,18 @@ function Library:Notify(...)
     end
 
     function Data:Destroy()
+        if Data.Destroyed then
+            return
+        end
         Data.Destroyed = true
 
         if typeof(Data.Time) == "Instance" then
             pcall(Data.Time.Destroy, Data.Time)
         end
 
-        if DeleteConnection then
-            DeleteConnection:Disconnect()
+        if Data._deleteConnection then
+            Data._deleteConnection:Disconnect()
+            Data._deleteConnection = nil
         end
 
         if FakeBackground then
@@ -8276,6 +8246,8 @@ function Library:Notify(...)
                 table.remove(Library.NotificationQueue, Idx)
             end
             FakeBackground:Destroy()
+
+            Library:TryDequeuePending()
         end)
     end
 
@@ -8324,16 +8296,6 @@ function Library:Notify(...)
     Library.Notifications[FakeBackground] = Data
     table.insert(Library.NotificationQueue, FakeBackground)
 
-    if Library.MaxNotifications > 0 then
-        while #Library.NotificationQueue > Library.MaxNotifications do
-            local Oldest = table.remove(Library.NotificationQueue, 1)
-            local OldestData = Library.Notifications[Oldest]
-            if OldestData and not OldestData.Persist and not OldestData.Destroyed then
-                OldestData:Destroy()
-            end
-        end
-    end
-
     Library:UpdateNotificationPositions()
 
     FakeBackground.Visible = true
@@ -8347,7 +8309,7 @@ function Library:Notify(...)
         elseif typeof(Data.Time) == "Instance" then
             repeat
                 task.wait()
-            until DeletedInstance or Data.Destroyed
+            until Data._deletedInstance or Data.Destroyed
         else
             TweenService
                 :Create(TimerFill, TweenInfo.new(Data.Time, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
@@ -8363,6 +8325,105 @@ function Library:Notify(...)
     end)
 
     return Data
+end
+
+function Library:TryDequeuePending()
+    if Library.MaxNotifications <= 0 then
+        while #Library.PendingNotifications > 0 do
+            local NextData = table.remove(Library.PendingNotifications, 1)
+            if not NextData.Destroyed then
+                SpawnNotification(NextData)
+            end
+        end
+        return
+    end
+
+    while #Library.PendingNotifications > 0 and #Library.NotificationQueue < Library.MaxNotifications do
+        local NextData = table.remove(Library.PendingNotifications, 1)
+        if not NextData.Destroyed then
+            SpawnNotification(NextData)
+        end
+    end
+end
+
+function Library:Notify(...)
+    local Data = {}
+    local Info = select(1, ...)
+
+    if typeof(Info) == "table" then
+        Data.Title = tostring(Info.Title)
+        Data.TitleColor = Info.TitleColor
+
+        Data.Description = tostring(Info.Description)
+        Data.DescriptionColor = Info.DescriptionColor
+
+        Data.Time = Info.Time or 5
+        Data.SoundId = Info.SoundId
+        Data.Steps = Info.Steps
+        Data.Persist = Info.Persist
+
+        Data.Icon = Info.Icon
+        Data.BigIcon = Info.BigIcon
+        Data.IconColor = Info.IconColor
+
+        Data.Volume = tonumber(Info.Volume) or 3
+    else
+        Data.Description = tostring(Info)
+        Data.Time = select(2, ...) or 5
+        Data.SoundId = select(3, ...)
+        Data.Volume = select(4, ...) or 3
+    end
+    Data.Destroyed = false
+
+    Data._deletedInstance = false
+    Data._deleteConnection = nil
+    if typeof(Data.Time) == "Instance" then
+        Data._deleteConnection = Data.Time.Destroying:Connect(function()
+            Data._deletedInstance = true
+
+            if Data._deleteConnection then
+                Data._deleteConnection:Disconnect()
+                Data._deleteConnection = nil
+            end
+        end)
+    end
+
+    --// Pending-safe placeholders - overwritten by SpawnNotification once this notification actually gets a slot \\--
+    function Data:ChangeTitle(Text)
+        Data.Title = tostring(Text)
+    end
+    function Data:ChangeDescription(Text)
+        Data.Description = tostring(Text)
+    end
+    function Data:ChangeStep(_NewStep)
+        -- no-op until spawned; there's no timer bar to update yet
+    end
+    function Data:Resize()
+        -- no-op until spawned; there's no UI to resize yet
+    end
+    function Data:Destroy()
+        if Data.Destroyed then
+            return
+        end
+        Data.Destroyed = true
+
+        if Data._deleteConnection then
+            Data._deleteConnection:Disconnect()
+            Data._deleteConnection = nil
+        end
+
+        local Idx = table.find(Library.PendingNotifications, Data)
+        if Idx then
+            table.remove(Library.PendingNotifications, Idx)
+        end
+    end
+
+    if Library.MaxNotifications > 0 and #Library.NotificationQueue >= Library.MaxNotifications then
+        table.insert(Library.PendingNotifications, Data)
+        return Data
+    end
+
+    return SpawnNotification(Data)
 end
 
 function Library:CreateWindow(WindowInfo)
@@ -8937,6 +8998,9 @@ function Library:CreateWindow(WindowInfo)
                 end
             end
         end
+
+        -- // Raising the limit can free up slots for anything still queued \\ --
+        Library:TryDequeuePending()
     end
 
     local function ApplyCompact()
@@ -12007,6 +12071,7 @@ function Library:Unload()
 
     table.clear(Library.Notifications)
     table.clear(Library.NotificationQueue)
+    table.clear(Library.PendingNotifications)
     table.clear(Library.Dialogues)
     table.clear(Library.DraggableElements)
     table.clear(Library.KeybindToggles)
