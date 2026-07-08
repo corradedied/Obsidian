@@ -3321,6 +3321,28 @@ do
                 ModeButton:Select()
             end)
 
+            Button.MouseEnter:Connect(function()
+                if KeyPicker.Mode == Mode then
+                    return
+                end
+
+                TweenService:Create(Button, Library.TweenInfo, {
+                    BackgroundTransparency = 0.7,
+                    TextTransparency = 0.1,
+                }):Play()
+            end)
+
+            Button.MouseLeave:Connect(function()
+                if KeyPicker.Mode == Mode then
+                    return
+                end
+
+                TweenService:Create(Button, Library.TweenInfo, {
+                    BackgroundTransparency = 1,
+                    TextTransparency = 0.5,
+                }):Play()
+            end)
+
             if KeyPicker.Mode == Mode then
                 ModeButton:Select()
             end
@@ -3494,7 +3516,7 @@ do
                     return
                 end
 
-				KeyPicker.Toggled = true
+                KeyPicker.Toggled = true
             end
 
             Library:SafeCallback(KeyPicker.Callback, KeyPicker.Toggled)
@@ -3508,7 +3530,7 @@ do
                 Library:Toggle()
             end
 
-			if KeyPicker.Mode == "Press" then
+            if KeyPicker.Mode == "Press" then
                 KeyPicker.Toggled = false
             end
         end
@@ -4070,7 +4092,7 @@ do
             Parent = InfoHolder,
         })
 
-        New("UIStroke", {
+        local HueBoxStroke = New("UIStroke", {
             Color = "OutlineColor",
             Parent = HueBox,
         })
@@ -4092,7 +4114,7 @@ do
             Parent = InfoHolder,
         })
 
-        New("UIStroke", {
+        local RgbBoxStroke = New("UIStroke", {
             Color = "OutlineColor",
             Parent = RgbBox,
         })
@@ -4117,6 +4139,7 @@ do
         do
             local function CreateButton(Text, Func)
                 local Button = New("TextButton", {
+                    BackgroundColor3 = "MainColor",
                     BackgroundTransparency = 1,
                     Size = UDim2.new(1, 0, 0, 21),
                     Text = Text,
@@ -4127,6 +4150,18 @@ do
                 Button.MouseButton1Click:Connect(function()
                     Library:SafeCallback(Func)
                     ContextMenu:Close()
+                end)
+
+                Button.MouseEnter:Connect(function()
+                    TweenService:Create(Button, Library.TweenInfo, {
+                        BackgroundTransparency = 0.7,
+                    }):Play()
+                end)
+
+                Button.MouseLeave:Connect(function()
+                    TweenService:Create(Button, Library.TweenInfo, {
+                        BackgroundTransparency = 1,
+                    }):Play()
                 end)
             end
 
@@ -4305,6 +4340,24 @@ do
 
             ColorPicker:Update()
         end))
+
+        for _, BoxPair in ipairs({ { HueBox, HueBoxStroke }, { RgbBox, RgbBoxStroke } }) do
+            local TextBoxInstance, Stroke = BoxPair[1], BoxPair[2]
+
+            table.insert(ColorPicker.Connections, TextBoxInstance.Focused:Connect(function()
+                Library.Registry[Stroke].Color = "AccentColor"
+                TweenService:Create(Stroke, Library.TweenInfo, {
+                    Color = Library.Scheme.AccentColor,
+                }):Play()
+            end))
+
+            table.insert(ColorPicker.Connections, TextBoxInstance.FocusLost:Connect(function()
+                Library.Registry[Stroke].Color = "OutlineColor"
+                TweenService:Create(Stroke, Library.TweenInfo, {
+                    Color = Library.Scheme.OutlineColor,
+                }):Play()
+            end))
+        end
 
         ColorPicker:Display()
 
@@ -5622,7 +5675,7 @@ do
             Parent = Box,
         })
 
-        New("UIStroke", {
+        local BoxStroke = New("UIStroke", {
             Color = "OutlineColor",
             Parent = Box,
         })
@@ -5719,6 +5772,24 @@ do
                 Input:SetValue(Box.Text)
             end))
         end
+
+        table.insert(Input.Connections, Box.Focused:Connect(function()
+            if Input.Disabled then
+                return
+            end
+
+            Library.Registry[BoxStroke].Color = "AccentColor"
+            TweenService:Create(BoxStroke, Library.TweenInfo, {
+                Color = Library.Scheme.AccentColor,
+            }):Play()
+        end))
+
+        table.insert(Input.Connections, Box.FocusLost:Connect(function()
+            Library.Registry[BoxStroke].Color = "OutlineColor"
+            TweenService:Create(BoxStroke, Library.TweenInfo, {
+                Color = Library.Scheme.OutlineColor,
+            }):Play()
+        end))
 
         if typeof(Input.Tooltip) == "string" or typeof(Input.DisabledTooltip) == "string" then
             Input.TooltipTable = Library:AddTooltip(Input.Tooltip, Input.DisabledTooltip, Box)
@@ -6646,6 +6717,44 @@ do
                         Library:UpdateDependencyBoxes()
                         Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
                         Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
+                    end)
+
+                    Button.MouseEnter:Connect(function()
+                        if Selected then
+                            return
+                        end
+
+                        TweenService:Create(Container, Library.TweenInfo, {
+                            BackgroundTransparency = 0.85,
+                        }):Play()
+                        TweenService:Create(Button, Library.TweenInfo, {
+                            TextTransparency = 0.25,
+                        }):Play()
+
+                        if Image then
+                            TweenService:Create(Image, Library.TweenInfo, {
+                                ImageTransparency = 0.25,
+                            }):Play()
+                        end
+                    end)
+
+                    Button.MouseLeave:Connect(function()
+                        if Selected then
+                            return
+                        end
+
+                        TweenService:Create(Container, Library.TweenInfo, {
+                            BackgroundTransparency = 1,
+                        }):Play()
+                        TweenService:Create(Button, Library.TweenInfo, {
+                            TextTransparency = 0.5,
+                        }):Play()
+
+                        if Image then
+                            TweenService:Create(Image, Library.TweenInfo, {
+                                ImageTransparency = 0.5,
+                            }):Play()
+                        end
                     end)
 
                     if Info.Multi and Dropdown.DragSelect and not Library.IsMobile then
@@ -11173,7 +11282,8 @@ function Library:CreateWindow(WindowInfo)
             return
         end
 
-        if Input.KeyCode == Library.ToggleKeybind then
+        local ToggleKeybind = Library.ToggleKeybind
+        if typeof(ToggleKeybind) == "table" and (ToggleKeybind.Type == "KeyPicker" and ToggleKeybind.Mode ~= "Always" and ToggleKeybind:GetState() == true) or Input.KeyCode == ToggleKeybind then
             Library:Toggle()
         end
     end))
