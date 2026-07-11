@@ -11362,11 +11362,6 @@ function Library:CreateWindow(WindowInfo)
         if UserInputService:GetFocusedTextBox() then
             return
         end
-
-        local ToggleKeybind = Library.ToggleKeybind
-        if typeof(ToggleKeybind) == "table" and (ToggleKeybind.Type == "KeyPicker" and ToggleKeybind.Mode ~= "Always" and ToggleKeybind:GetState() == true) or Input.KeyCode == ToggleKeybind then
-            Library:Toggle()
-        end
     end))
 
     Library:GiveSignal(UserInputService.WindowFocused:Connect(function()
