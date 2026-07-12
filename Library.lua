@@ -11362,6 +11362,10 @@ function Library:CreateWindow(WindowInfo)
         if UserInputService:GetFocusedTextBox() then
             return
         end
+
+        if Input.KeyCode == Library.ToggleKeybind then
+            Library:Toggle()
+        end
     end))
 
     Library:GiveSignal(UserInputService.WindowFocused:Connect(function()
