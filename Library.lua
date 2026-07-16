@@ -666,6 +666,19 @@ local function GetTableSize(Table: { [any]: any })
 
     return Size
 end
+local function IsSequentialArray(Table: { [any]: any })
+    local Count = 0
+
+    for Key in Table do
+        if typeof(Key) ~= "number" or Key < 1 or Key % 1 ~= 0 then
+            return false
+        end
+
+        Count += 1
+    end
+
+    return Count == #Table
+end
 local function StopTween(Tween: TweenBase, Destroy: boolean?)
     if not Tween then
         return
@@ -740,12 +753,12 @@ local function CheckDepbox(Box, Search)
             local Visible = false
 
             --// Check if Search matches Element's Name and if Element is Visible
-            if ElementInfo.Text:lower():match(Search) and ElementInfo.Visible then
+            if ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
                 Visible = true
             else
                 ElementInfo.Base.Visible = false
             end
-            if ElementInfo.SubButton.Text:lower():match(Search) and ElementInfo.SubButton.Visible then
+            if ElementInfo.SubButton.Text:lower():find(Search, 1, true) and ElementInfo.SubButton.Visible then
                 Visible = true
             else
                 ElementInfo.SubButton.Base.Visible = false
@@ -759,7 +772,7 @@ local function CheckDepbox(Box, Search)
         end
 
         --// Check if Search matches Element's Name and if Element is Visible
-        if ElementInfo.Text and ElementInfo.Text:lower():match(Search) and ElementInfo.Visible then
+        if ElementInfo.Text and ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
             ElementInfo.Holder.Visible = true
             VisibleElements += 1
         else
@@ -823,12 +836,12 @@ local function ApplySearchToTab(Tab, Search)
                 local Visible = false
 
                 --// Check if Search matches Element's Name and if Element is Visible
-                if ElementInfo.Text:lower():match(Search) and ElementInfo.Visible then
+                if ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
                     Visible = true
                 else
                     ElementInfo.Base.Visible = false
                 end
-                if ElementInfo.SubButton.Text:lower():match(Search) and ElementInfo.SubButton.Visible then
+                if ElementInfo.SubButton.Text:lower():find(Search, 1, true) and ElementInfo.SubButton.Visible then
                     Visible = true
                 else
                     ElementInfo.SubButton.Base.Visible = false
@@ -843,7 +856,7 @@ local function ApplySearchToTab(Tab, Search)
             end
 
             --// Check if Search matches Element's Name and if Element is Visible
-            if ElementInfo.Text and ElementInfo.Text:lower():match(Search) and ElementInfo.Visible then
+            if ElementInfo.Text and ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
                 ElementInfo.Holder.Visible = true
                 VisibleElements += 1
             else
@@ -883,12 +896,12 @@ local function ApplySearchToTab(Tab, Search)
                     local Visible = false
 
                     --// Check if Search matches Element's Name and if Element is Visible
-                    if ElementInfo.Text:lower():match(Search) and ElementInfo.Visible then
+                    if ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
                         Visible = true
                     else
                         ElementInfo.Base.Visible = false
                     end
-                    if ElementInfo.SubButton.Text:lower():match(Search) and ElementInfo.SubButton.Visible then
+                    if ElementInfo.SubButton.Text:lower():find(Search, 1, true) and ElementInfo.SubButton.Visible then
                         Visible = true
                     else
                         ElementInfo.SubButton.Base.Visible = false
@@ -902,7 +915,7 @@ local function ApplySearchToTab(Tab, Search)
                 end
 
                 --// Check if Search matches Element's Name and if Element is Visible
-                if ElementInfo.Text and ElementInfo.Text:lower():match(Search) and ElementInfo.Visible then
+                if ElementInfo.Text and ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
                     ElementInfo.Holder.Visible = true
                     VisibleElements[SubTab] += 1
                 else
@@ -6446,16 +6459,18 @@ do
 
             local Str = ""
             local ValueImage = nil
+            local IsDictionary = not IsSequentialArray(Dropdown.Values)
 
             if Info.Multi then
-                for _, Value in Dropdown.Values do
+                for Key, RawValue in Dropdown.Values do
+                    local Value = IsDictionary and Key or RawValue
                     if Dropdown.Value[Value] then
                         if not ValueImage then
                             ValueImage = GetValueImage(Value)
                         end
 
                         Str = Str
-                            .. (Info.FormatDisplayValue and tostring(Info.FormatDisplayValue(Value)) or tostring(Value))
+                            .. (Info.FormatDisplayValue and tostring(Info.FormatDisplayValue(RawValue)) or tostring(RawValue))
                             .. ", "
                     end
                 end
@@ -6463,7 +6478,13 @@ do
                 Str = Str:sub(1, #Str - 2)
             else
                 ValueImage = GetValueImage(Dropdown.Value)
-                Str = Dropdown.Value and tostring(Dropdown.Value) or ""
+
+                local DisplayValue = Dropdown.Value
+                if IsDictionary and Dropdown.Value ~= nil then
+                    DisplayValue = Dropdown.Values[Dropdown.Value]
+                end
+
+                Str = DisplayValue and tostring(DisplayValue) or ""
 
                 if Str ~= "" and Info.FormatDisplayValue then
                     Str = tostring(Info.FormatDisplayValue(Str))
@@ -6557,6 +6578,7 @@ do
         function Dropdown:BuildDropdownList()
             local Values = Dropdown.Values
             local DisabledValues = Dropdown.DisabledValues
+            local IsDictionary = not IsSequentialArray(Values)
 
             StopDragSelect()
 
@@ -6573,11 +6595,13 @@ do
             local ProcessedCount = 0
             local TotalLen = GetTableSize(Values) + GetTableSize(DisabledValues)
 
-            for _, Value in Values do
+            for Key, RawValue in Values do
                 ProcessedCount += 1
 
-                local FormattedValue = tostring(Info.FormatListValue and Info.FormatListValue(Value) or Value)
-                if SearchBox and not FormattedValue:lower():match(SearchBox.Text:lower()) then
+                local Value = IsDictionary and Key or RawValue
+
+                local FormattedValue = tostring(Info.FormatListValue and Info.FormatListValue(RawValue) or RawValue)
+                if SearchBox and not FormattedValue:lower():find(SearchBox.Text:lower(), 1, true) then
                     continue
                 end
 
@@ -6744,6 +6768,14 @@ do
             Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
         end
 
+        local function ValueExists(Val)
+            if IsSequentialArray(Dropdown.Values) then
+                return table.find(Dropdown.Values, Val) ~= nil
+            end
+
+            return Dropdown.Values[Val] ~= nil
+        end
+
         function Dropdown:SetValue(Value)
             if Info.Multi then
                 local Table = {}
@@ -6751,14 +6783,14 @@ do
                 for Val, Active in Value or {} do
                     if typeof(Active) ~= "boolean" then
                         Table[Active] = true
-                    elseif Active and table.find(Dropdown.Values, Val) then
+                    elseif Active and ValueExists(Val) then
                         Table[Val] = true
                     end
                 end
 
                 Dropdown.Value = Table
             else
-                if table.find(Dropdown.Values, Value) then
+                if ValueExists(Value) then
                     Dropdown.Value = Value
                 elseif not Value then
                     Dropdown.Value = nil
@@ -6778,7 +6810,27 @@ do
 
         function Dropdown:SetValues(Values)
             Dropdown.Values = Values
+
+            local Changed = false
+            if Info.Multi then
+                for Val in Dropdown.Value do
+                    if not ValueExists(Val) then
+                        Dropdown.Value[Val] = nil
+                        Changed = true
+                    end
+                end
+            elseif Dropdown.Value ~= nil and not ValueExists(Dropdown.Value) then
+                Dropdown.Value = nil
+                Changed = true
+            end
+
             Dropdown:BuildDropdownList()
+            Dropdown:Display()
+
+            if Changed and not Dropdown.Disabled then
+                Library:UpdateDependencyBoxes()
+                Dropdown:RunChanged()
+            end
         end
 
         function Dropdown:AddValues(Values)
@@ -6886,15 +6938,21 @@ do
             table.insert(Dropdown.Connections, SearchBox:GetPropertyChangedSignal("Text"):Connect(Dropdown.BuildDropdownList))
         end
 
+        local DefaultIsDictionary = not IsSequentialArray(Dropdown.Values)
+
         local Defaults = {}
         if typeof(Info.Default) == "string" then
-            local Index = table.find(Dropdown.Values, Info.Default)
+            local Index = DefaultIsDictionary
+                and (Dropdown.Values[Info.Default] ~= nil and Info.Default or nil)
+                or table.find(Dropdown.Values, Info.Default)
             if Index then
                 table.insert(Defaults, Index)
             end
         elseif typeof(Info.Default) == "table" then
             for _, Value in next, Info.Default do
-                local Index = table.find(Dropdown.Values, Value)
+                local Index = DefaultIsDictionary
+                    and (Dropdown.Values[Value] ~= nil and Value or nil)
+                    or table.find(Dropdown.Values, Value)
                 if Index then
                     table.insert(Defaults, Index)
                 end
@@ -6906,10 +6964,11 @@ do
         if next(Defaults) then
             for i = 1, #Defaults do
                 local Index = Defaults[i]
+                local SelectValue = DefaultIsDictionary and Index or Dropdown.Values[Index]
                 if Info.Multi then
-                    Dropdown.Value[Dropdown.Values[Index]] = true
+                    Dropdown.Value[SelectValue] = true
                 else
-                    Dropdown.Value = Dropdown.Values[Index]
+                    Dropdown.Value = SelectValue
                 end
 
                 if not Info.Multi then
