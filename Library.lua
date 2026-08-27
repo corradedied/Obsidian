@@ -1605,7 +1605,7 @@ local ModalElement = New("TextButton", {
 --// Floats and Overlays
 local Floats = New("Frame", {
     BackgroundTransparency = 1,
-    Size = UDim2.fromOffset(0, 0),
+    Size = UDim2.fromScale(1, 1),
     ZIndex = 10,
     Active = false,
     Parent = ScreenGui,
@@ -1613,7 +1613,7 @@ local Floats = New("Frame", {
 
 local Overlay = New("Frame", {
     BackgroundTransparency = 1,
-    Size = UDim2.fromOffset(0, 0),
+    Size = UDim2.fromScale(1, 1),
     ZIndex = 20,
     Active = false,
     Parent = ScreenGui,
@@ -8909,10 +8909,7 @@ do
                 return
             end
 
-            if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                Dragging = true
-                LastMousePos = input.Position
-            elseif input.UserInputType == Enum.UserInputType.Touch and not Pinching then
+            if input.UserInputType == Enum.UserInputType.MouseButton2 or (input.UserInputType == Enum.UserInputType.Touch and not Pinching) then
                 Dragging = true
                 LastMousePos = input.Position
             end
@@ -8927,9 +8924,7 @@ do
                 return
             end
 
-            if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                Dragging = false
-            elseif input.UserInputType == Enum.UserInputType.Touch then
+            if input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
                 Dragging = false
             end
         end))
@@ -8976,7 +8971,7 @@ do
             end
         end))
 
-        table.insert(Viewport.Connections, UserInputService.TouchPinch:Connect(function(touchPositions, scale, velocity, state)
+        table.insert(Viewport.Connections, UserInputService.TouchPinch:Connect(function(touchPositions, _, _, state)
             if Library.Unloaded then
                 return
             end
