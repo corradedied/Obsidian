@@ -201,6 +201,15 @@ local Library = {
     NotifySide = "Right",
     NotifyTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
+    NotifyPriority = {
+        Urgent = 0,
+        Normal = 1,
+        Low = 2,
+    },
+    NotifyPriorityColors = {
+        [0] = "RedColor",
+    },
+
     --// Dialogues \\--
     Dialogues = {},
     ActiveDialog = nil,
@@ -225,10 +234,15 @@ local Library = {
     WindowAnimationInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     DropdownTransitionInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     KeyPickerTransitionInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    ColorPickerTransitionInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    InputTransitionInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    ButtonTransitionInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
     GroupboxTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     RotatingChevronTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
     SliderTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    ButtonRippleTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    ButtonTextWipeTweenInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
     Animations = {
         ToggleWindow = false,
@@ -237,6 +251,9 @@ local Library = {
         Dropdown = false,
         KeyPicker = false,
         Slider = false
+        ColorPicker = false,
+        Input = false,
+        Button = false
     },
 
     --// States \\--
@@ -431,6 +448,9 @@ local Templates = {
             Dropdown = false,
             KeyPicker = false,
             Slider = false
+            ColorPicker = false,
+            Input = false,
+            Button = false
         },
 
         TabTransitionTime = 0.22,
@@ -1805,6 +1825,156 @@ function Library:MouseIsOverFrame(Frame: GuiObject, Mouse: Vector2): boolean
         and Mouse.Y <= AbsPos.Y + AbsSize.Y
 end
 
+function Library:CreateButtonRipple(Base: GuiButton, Input: InputObject, Color: string?)
+    if not (Library.Animations and Library.Animations.Button == true) then
+        return
+    end
+
+    local AbsolutePosition, AbsoluteSize = Base.AbsolutePosition, Base.AbsoluteSize
+
+    --// Where on the button the click landed, so the ripple originates from the cursor \\--
+    local RelativeX = math.clamp(Input.Position.X - AbsolutePosition.X, 0, AbsoluteSize.X)
+    local RelativeY = math.clamp(Input.Position.Y - AbsolutePosition.Y, 0, AbsoluteSize.Y)
+
+    --// Diameter needed to cover the furthest corner from the click point \\--
+    local FurthestX = math.max(RelativeX, AbsoluteSize.X - RelativeX)
+    local FurthestY = math.max(RelativeY, AbsoluteSize.Y - RelativeY)
+    local Diameter = 2 * math.sqrt(FurthestX ^ 2 + FurthestY ^ 2)
+
+    local Ripple = New("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Color or "FontColor",
+        BackgroundTransparency = 0.7,
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(RelativeX, RelativeY),
+        Size = UDim2.fromOffset(0, 0),
+        Parent = Base,
+    })
+
+    New("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = Ripple,
+    })
+
+    local Tween = TweenService:Create(Ripple, Library.ButtonRippleTweenInfo, {
+        Size = UDim2.fromOffset(Diameter, Diameter),
+        BackgroundTransparency = 1,
+    })
+
+    Library:GiveSignal(Tween.Completed:Once(function()
+        Ripple:Destroy()
+    end))
+
+    Tween:Play()
+end
+
+local ActiveTextWipes = setmetatable({}, { __mode = "k" })
+
+local function GetTextWipeLabel(Base: TextButton): TextLabel
+    local Mask = Base:FindFirstChild("__TextWipeMask")
+    if Mask then
+        return Mask:FindFirstChild("__TextWipeLabel")
+    end
+
+    Mask = New("Frame", {
+        Name = "__TextWipeMask",
+        BackgroundTransparency = 1,
+        ClipsDescendants = true,
+        Size = UDim2.fromScale(1, 1),
+        Parent = Base,
+    })
+
+    local Label = New("TextLabel", {
+        Name = "__TextWipeLabel",
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
+        Font = Base.Font,
+        TextSize = Base.TextSize,
+        TextWrapped = Base.TextWrapped,
+        TextScaled = Base.TextScaled,
+        RichText = Base.RichText,
+        TextXAlignment = Base.TextXAlignment,
+        TextYAlignment = Base.TextYAlignment,
+        TextColor3 = Base.TextColor3,
+        TextTransparency = Base.TextTransparency,
+        Text = Base.Text,
+        Parent = Mask,
+    })
+
+    Base:GetPropertyChangedSignal("TextColor3"):Connect(function()
+        Label.TextColor3 = Base.TextColor3
+    end)
+    Base:GetPropertyChangedSignal("TextTransparency"):Connect(function()
+        Label.TextTransparency = Base.TextTransparency
+    end)
+
+    Base.Text = ""
+
+    return Label
+end
+
+function Library:SetButtonText(Base: TextButton, NewText: string, OnSwap: (() -> ())?)
+    local Mask = Base:FindFirstChild("__TextWipeMask")
+    local Label = Mask and Mask:FindFirstChild("__TextWipeLabel")
+    local CurrentText = Label and Label.Text or Base.Text
+
+    if CurrentText == NewText then
+        Library:SafeCallback(OnSwap)
+        return
+    end
+
+    if not (Library.Animations and Library.Animations.Button == true) then
+        if Label then
+            Label.Text = NewText
+        else
+            Base.Text = NewText
+        end
+
+        Library:SafeCallback(OnSwap)
+        return
+    end
+
+    if not Label then
+        Label = GetTextWipeLabel(Base)
+    end
+
+    local Existing = ActiveTextWipes[Base]
+    if Existing then
+        StopTween(Existing, true)
+        ActiveTextWipes[Base] = nil
+    end
+
+    Label.Position = UDim2.fromScale(0, 0)
+
+    local WipeOut = TweenService:Create(Label, Library.ButtonTextWipeTweenInfo, {
+        Position = UDim2.fromScale(1, 0),
+    })
+
+    ActiveTextWipes[Base] = WipeOut
+    WipeOut:Play()
+    WipeOut.Completed:Wait()
+
+    if ActiveTextWipes[Base] == WipeOut then
+        ActiveTextWipes[Base] = nil
+    end
+
+    Label.Text = NewText
+    Label.Position = UDim2.fromScale(-1, 0)
+    Library:SafeCallback(OnSwap)
+
+    local WipeIn = TweenService:Create(Label, Library.ButtonTextWipeTweenInfo, {
+        Position = UDim2.fromScale(0, 0),
+    })
+
+    ActiveTextWipes[Base] = WipeIn
+    WipeIn:Play()
+    WipeIn.Completed:Wait()
+
+    if ActiveTextWipes[Base] == WipeIn then
+        ActiveTextWipes[Base] = nil
+    end
+end
+
 function Library:IsInsideFrame(ParentFrame: GuiObject, Frame: GuiObject)
     local GuiPos = Frame.AbsolutePosition
     local GuiSize = Frame.AbsoluteSize
@@ -3000,6 +3170,7 @@ function Library:AddDraggableButton(...)
 
     local Button = New("TextButton", {
         BackgroundColor3 = "BackgroundColor",
+        ClipsDescendants = true,
         Position = UDim2.fromOffset(6, 6),
         TextSize = 16,
         ZIndex = 1,
@@ -3027,6 +3198,8 @@ function Library:AddDraggableButton(...)
         if not IsClickInput(Input) then
             return
         end
+
+        Library:CreateButtonRipple(Button, Input)
 
         local Start = tick()
 
@@ -3188,6 +3361,7 @@ function Library:AddDraggableImageButton(...)
 
     local Button = New("TextButton", {
         BackgroundColor3 = "BackgroundColor",
+        ClipsDescendants = true,
         Position = UDim2.fromOffset(6, 6),
         Size = UDim2.fromOffset(IconSize + 12, IconSize + 12),
         Text = "",
@@ -3227,6 +3401,8 @@ function Library:AddDraggableImageButton(...)
         if not IsClickInput(Input) then
             return
         end
+
+        Library:CreateButtonRipple(Button, Input)
 
         local Start = tick()
 
@@ -3304,7 +3480,7 @@ function Library:AddContextMenu(
     ActiveCallback: (Active: boolean) -> ()?,
     IgnoreCornerRadius: boolean?,
     SpecificCornersOnly: ("top" | "bottom" | "no_left" | "no_top_left")?, -- stupid way of doing this
-    AnimationType: ("Dropdown" | "KeyPicker" | "none")?
+    AnimationType: ("Dropdown" | "KeyPicker" | "ColorPicker" | "none")?
 )
     local Menu
     local HolderGui = Holder:FindFirstAncestorOfClass("ScreenGui")
@@ -3470,7 +3646,7 @@ function Library:AddContextMenu(
         if IsAnimated == true then
             local OpenSize = TargetSize
             if Table.AutoSizeY then
-                local FullHeight = Menu.AbsoluteSize.Y
+                local FullHeight = Menu.AbsoluteSize.Y / Library.DPIScale
 
                 Menu.AutomaticSize = Enum.AutomaticSize.None
                 OpenSize = UDim2.new(TargetSize.X.Scale, TargetSize.X.Offset, 0, FullHeight)
@@ -3994,6 +4170,9 @@ do
 
         local SlideForwardTween
         local SlideBackTween
+        local WipeTween
+        local Hovering = false
+        local KeyTransitioning = false
         local HandleForwardTween = function(State)
             if State ~= Enum.PlaybackState.Completed then
                 return
@@ -4072,15 +4251,39 @@ do
         }); table.insert(Library.SpecificCorners, PickerCorner)
 
         Picker.MouseEnter:Connect(function()
-            TweenService:Create(Picker, Library.TweenInfo, {
+            Hovering = true
+
+            if KeyTransitioning then
+                return
+            end
+
+            if WipeTween then
+                StopTween(WipeTween, true)
+            end
+
+            local HoverTween = TweenService:Create(Picker, Library.TweenInfo, {
                 TextTransparency = 0,
-            }):Play()
+            })
+            WipeTween = HoverTween
+            HoverTween:Play()
         end)
 
         Picker.MouseLeave:Connect(function()
-            TweenService:Create(Picker, Library.TweenInfo, {
+            Hovering = false
+
+            if KeyTransitioning then
+                return
+            end
+
+            if WipeTween then
+                StopTween(WipeTween, true)
+            end
+
+            local HoverTween = TweenService:Create(Picker, Library.TweenInfo, {
                 TextTransparency = 0.4,
-            }):Play()
+            })
+            WipeTween = HoverTween
+            HoverTween:Play()
         end)
 
         if IsForButton then
@@ -4256,6 +4459,7 @@ do
             local Button = New("TextButton", {
                 BackgroundColor3 = "MainColor",
                 BackgroundTransparency = 1,
+                ClipsDescendants = true,
                 Size = UDim2.new(1, 0, 0, IsForButton and 21 or (TotalModeButtons == 1 and 18 or 19)),
                 Text = Mode,
                 TextSize = 14,
@@ -4317,6 +4521,14 @@ do
 
             Button.MouseButton1Click:Connect(function()
                 ModeButton:Select()
+            end)
+
+            Button.InputBegan:Connect(function(Input)
+                if not IsClickInput(Input) then
+                    return
+                end
+
+                Library:CreateButtonRipple(Button, Input)
             end)
 
             Button.MouseEnter:Connect(function()
@@ -4433,8 +4645,58 @@ do
                     Picker.TextSize,
                     ToggleLabel.AbsoluteSize.X
                 )
-                Picker.Text = DisplayText
-                Picker.Size = IsForButton and UDim2.new(0, X + 9, 1, 0) or UDim2.fromOffset((X + 9), (Y + 4))
+
+                local ApplyText = function()
+                    Picker.Text = DisplayText
+                    Picker.Size = IsForButton and UDim2.new(0, X + 9, 1, 0) or UDim2.fromOffset((X + 9), (Y + 4))
+                end
+
+                local IsAnimated = Library.Animations and Library.Animations.KeyPicker == true
+                if IsAnimated and Picker.Text ~= DisplayText then
+                    if WipeTween then
+                        StopTween(WipeTween, true)
+                        WipeTween = nil
+                    end
+
+                    KeyTransitioning = true
+
+                    local WipeInfo = Library.KeyPickerTransitionInfo or TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+                    local WipeOut = TweenService:Create(Picker, WipeInfo, { TextTransparency = 1 })
+                    WipeTween = WipeOut
+
+                    local OutConnection; OutConnection = Library:GiveSignal(WipeOut.Completed:Once(function()
+                        if OutConnection then
+                            OutConnection:Disconnect()
+                        end
+
+                        if WipeTween ~= WipeOut then
+                            return
+                        end
+
+                        ApplyText()
+
+                        local WipeIn = TweenService:Create(Picker, WipeInfo, { TextTransparency = Hovering and 0 or 0.4 })
+                        WipeTween = WipeIn
+                        WipeIn:Play()
+
+                        local InConnection; InConnection = Library:GiveSignal(WipeIn.Completed:Once(function()
+                            if InConnection then
+                                InConnection:Disconnect()
+                            end
+
+                            if WipeTween == WipeIn then
+                                WipeTween = nil
+                            end
+
+                            KeyTransitioning = false
+                        end))
+                    end))
+
+                    WipeOut:Play()
+                else
+                    ApplyText()
+                end
             end
         end
 
@@ -4625,13 +4887,7 @@ do
             end
 
             SetPickingState(true)
-
-            if IsForButton and SlideOverflow then
-                KeyPicker:Display("...")
-            else
-                Picker.Text = "..."
-                Picker.Size = IsForButton and UDim2.new(0, 29, 1, 0) or UDim2.fromOffset(29, 18)
-            end
+            KeyPicker:Display("...")
 
             -- Wait for any input --
             local ActiveModifiers = {}
@@ -5000,7 +5256,7 @@ do
                     FooterCorner.BottomLeftRadius = Half
                     FooterCorner.BottomRightRadius = Half
                 end
-            end, false, "no_top_left")
+            end, false, "no_top_left", "ColorPicker")
         ColorMenu.List.Padding = UDim.new(0, 0)
         ColorPicker.ColorMenu = ColorMenu
 
@@ -5030,6 +5286,7 @@ do
             BackgroundColor3 = function()
                 return Library:GetBetterColor(Library.Scheme.BackgroundColor, 4)
             end,
+            ClipsDescendants = true,
             Size = UDim2.new(1, 0, 0, FooterHeight),
             Parent = ColorMenu.Menu,
         })
@@ -5221,8 +5478,8 @@ do
                 local ViewportSize = Camera.ViewportSize
                 local ScreenMargin = 12
 
-                local MaxWidth = ViewportSize.X - ColorMenu.Menu.AbsolutePosition.X - ScreenMargin
-                local MaxHeight = ViewportSize.Y - ColorMenu.Menu.AbsolutePosition.Y - ScreenMargin - FixedVerticalOverhead
+                local MaxWidth = (ViewportSize.X - ColorMenu.Menu.AbsolutePosition.X - ScreenMargin) / Library.DPIScale
+                local MaxHeight = (ViewportSize.Y - ColorMenu.Menu.AbsolutePosition.Y - ScreenMargin) / Library.DPIScale - FixedVerticalOverhead
 
                 while NewWidth > MinMapSize and GetContentWidth(NewWidth) > MaxWidth do
                     NewWidth -= 4
@@ -5235,7 +5492,7 @@ do
                 return NewWidth, NewHeight
             end
 
-            local function UpdateColorMenuSize(NewWidth, NewHeight)
+            local function UpdateColorMenuSize(NewWidth, NewHeight, BaseOverhead)
                 NewWidth = math.max(MinMapSize, math.floor(NewWidth + 0.5))
                 NewHeight = math.max(MinMapSize, math.floor(NewHeight + 0.5))
                 NewWidth, NewHeight = ClampToViewport(NewWidth, NewHeight)
@@ -5258,14 +5515,20 @@ do
 
                 ColorPicker.MapWidth = NewWidth
                 ColorPicker.MapHeight = NewHeight
-                ColorMenu:SetSize(UDim2.new(0, GetContentWidth(NewWidth), 0, 0))
+
+                local ContentWidth = GetContentWidth(NewWidth)
+                if BaseOverhead then
+                    ColorMenu:SetSize(UDim2.new(0, ContentWidth, 0, math.floor(BaseOverhead + NewHeight + 0.5)))
+                else
+                    ColorMenu:SetSize(UDim2.new(0, ContentWidth, 0, 0))
+                end
             end
 
             ResizeGrabber = New("TextButton", {
-                AnchorPoint = Vector2.new(1, 0),
+                AnchorPoint = Vector2.new(1, 1),
                 BackgroundTransparency = 1,
-                Position = UDim2.new(1, -Library.CornerRadius / 4, 0, 0),
-                Size = UDim2.fromScale(1, 1),
+                Position = UDim2.new(1, -Library.CornerRadius / 4, 0.95, 0),
+                Size = UDim2.fromScale(0.8, 0.8),
                 SizeConstraint = Enum.SizeConstraint.RelativeYY,
                 Text = "",
                 Parent = FooterBackground,
@@ -5281,19 +5544,45 @@ do
                 Library:ApplyLucideIcon(ResizeGrabberIcon, ResizeIcon)
             end
 
+            table.insert(ColorPicker.Connections, ResizeGrabber.MouseEnter:Connect(function()
+                Library.Registry[ResizeGrabberIcon].ImageColor3 = "AccentColor"
+                TweenService:Create(ResizeGrabberIcon, Library.TweenInfo, {
+                    ImageColor3 = Library.Scheme.AccentColor,
+                    ImageTransparency = 0,
+                }):Play()
+            end))
+
+            table.insert(ColorPicker.Connections, ResizeGrabber.MouseLeave:Connect(function()
+                Library.Registry[ResizeGrabberIcon].ImageColor3 = "FontColor"
+                TweenService:Create(ResizeGrabberIcon, Library.TweenInfo, {
+                    ImageColor3 = Library.Scheme.FontColor,
+                    ImageTransparency = 0.5,
+                }):Play()
+            end))
+
             table.insert(ColorPicker.Connections, ResizeGrabber.InputBegan:Connect(function(Input: InputObject)
+                if not IsDragInput(Input) then
+                    return
+                end
+
                 Library.CantDragForced = true
                 local StartMouse = Vector2.new(Mouse.X, Mouse.Y)
                 local StartWidth = ColorPicker.MapWidth
                 local StartHeight = ColorPicker.MapHeight
 
+                local BaseOverhead = (ColorMenu.Menu.AbsoluteSize.Y / Library.DPIScale) - StartHeight
+                ColorMenu.Menu.AutomaticSize = Enum.AutomaticSize.None
+
                 while IsDragInput(Input) and not ColorPicker.Destroyed do
-                    local Delta = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
-                    UpdateColorMenuSize(StartWidth + Delta.X, StartHeight + Delta.Y)
+                    local Delta = (Vector2.new(Mouse.X, Mouse.Y) - StartMouse) / Library.DPIScale
+                    UpdateColorMenuSize(StartWidth + Delta.X, StartHeight + Delta.Y, BaseOverhead)
 
                     RunService.RenderStepped:Wait()
                 end
 
+                if not ColorPicker.Destroyed then
+                    ColorMenu.Menu.AutomaticSize = Enum.AutomaticSize.Y
+                end
                 Library.CantDragForced = false
             end))
         end
@@ -5382,11 +5671,20 @@ do
                 local Button = New("TextButton", {
                     BackgroundColor3 = "MainColor",
                     BackgroundTransparency = 1,
+                    ClipsDescendants = true,
                     Size = UDim2.new(1, 0, 0, 21),
                     Text = Text,
                     TextSize = 14,
                     Parent = ContextMenu.Menu,
                 })
+
+                Button.InputBegan:Connect(function(Input)
+                    if not IsClickInput(Input) then
+                        return
+                    end
+
+                    Library:CreateButtonRipple(Button, Input)
+                end)
 
                 Button.MouseButton1Click:Connect(function()
                     Library:SafeCallback(Func)
@@ -5449,6 +5747,7 @@ do
 
         local CopyColorButton = New("TextButton", {
             BackgroundColor3 = "MainColor",
+            ClipsDescendants = true,
             Size = UDim2.fromScale(1, 1),
             Text = "Copy color",
             TextSize = 14,
@@ -5468,6 +5767,7 @@ do
 
         local PasteColorButton = New("TextButton", {
             BackgroundColor3 = "MainColor",
+            ClipsDescendants = true,
             Size = UDim2.fromScale(1, 1),
             Text = "Paste color",
             TextSize = 14,
@@ -5512,6 +5812,22 @@ do
             TweenService:Create(PasteColorButton, Library.TweenInfo, {
                 BackgroundColor3 = Library.Scheme.MainColor,
             }):Play()
+        end))
+
+        table.insert(ColorPicker.Connections, CopyColorButton.InputBegan:Connect(function(Input)
+            if not IsClickInput(Input) then
+                return
+            end
+
+            Library:CreateButtonRipple(CopyColorButton, Input)
+        end))
+
+        table.insert(ColorPicker.Connections, PasteColorButton.InputBegan:Connect(function(Input)
+            if not IsClickInput(Input) then
+                return
+            end
+
+            Library:CreateButtonRipple(PasteColorButton, Input)
         end))
 
         table.insert(ColorPicker.Connections, CopyColorButton.MouseButton1Click:Connect(function()
@@ -6154,6 +6470,7 @@ do
             local Base = New("TextButton", {
                 Active = not Button.Disabled,
                 BackgroundColor3 = Button.Disabled and "BackgroundColor" or "MainColor",
+                ClipsDescendants = true,
                 Size = UDim2.fromScale(1, 1),
                 Text = Button.Text,
                 TextSize = 14,
@@ -6180,6 +6497,14 @@ do
         end
 
         local function InitEvents(Button)
+            Button.Base.InputBegan:Connect(function(Input: InputObject)
+                if Button.Disabled or not IsClickInput(Input) then
+                    return
+                end
+
+                Library:CreateButtonRipple(Button.Base, Input, Button.Risky and "RedColor" or "FontColor")
+            end)
+
             Button.Base.MouseEnter:Connect(function()
                 if Button.Disabled then
                     return
@@ -6209,15 +6534,17 @@ do
                 if Button.DoubleClick then
                     Button.Locked = true
 
-                    Button.Base.Text = "Are you sure?"
-                    Button.Base.TextColor3 = Library.Scheme.AccentColor
-                    Library.Registry[Button.Base].TextColor3 = "AccentColor"
+                    Library:SetButtonText(Button.Base, "Are you sure?", function()
+                        Button.Base.TextColor3 = Library.Scheme.AccentColor
+                        Library.Registry[Button.Base].TextColor3 = "AccentColor"
+                    end)
 
                     local Clicked = WaitForEvent(Button.Base.MouseButton1Click, 0.5)
 
-                    Button.Base.Text = Button.Text
-                    Button.Base.TextColor3 = Button.Risky and Library.Scheme.RedColor or Library.Scheme.FontColor
-                    Library.Registry[Button.Base].TextColor3 = Button.Risky and "RedColor" or "FontColor"
+                    Library:SetButtonText(Button.Base, Button.Text, function()
+                        Button.Base.TextColor3 = Button.Risky and Library.Scheme.RedColor or Library.Scheme.FontColor
+                        Library.Registry[Button.Base].TextColor3 = Button.Risky and "RedColor" or "FontColor"
+                    end)
 
                     if Clicked then
                         Library:SafeCallback(Button.Func)
@@ -6298,7 +6625,7 @@ do
 
             function SubButton:SetText(Text: string)
                 SubButton.Text = Text
-                SubButton.Base.Text = Text
+                Library:SetButtonText(SubButton.Base, Text)
             end
 
             if typeof(SubButton.Tooltip) == "string" or typeof(SubButton.DisabledTooltip) == "string" then
@@ -6386,7 +6713,7 @@ do
 
         function Button:SetText(Text: string)
             Button.Text = Text
-            Button.Base.Text = Text
+            Library:SetButtonText(Button.Base, Text)
         end
 
         if typeof(Button.Tooltip) == "string" or typeof(Button.DisabledTooltip) == "string" then
@@ -7890,6 +8217,7 @@ do
         end
 
         local MenuTable
+        local FocusStrokeTween
         MenuTable = Library:AddContextMenu(
             DisplayContainer,
             function()
@@ -7908,6 +8236,21 @@ do
                 if SearchBox then
                     SearchBox.Text = ""
                     SearchBox.Visible = Active
+                end
+
+                local FocusColor = Active and "AccentColor" or "OutlineColor"
+                local IsAnimated, AnimationInfo = MenuTable.Animated()
+
+                StopTween(FocusStrokeTween, true)
+                Library.Registry[DisplayStroke].Color = FocusColor
+
+                if IsAnimated then
+                    FocusStrokeTween = TweenService:Create(DisplayStroke, AnimationInfo, {
+                        Color = Library.Scheme[FocusColor],
+                    })
+                    FocusStrokeTween:Play()
+                else
+                    DisplayStroke.Color = Library.Scheme[FocusColor]
                 end
 
                 local Half = UDim.new(0, Library.CornerRadius / 2)
@@ -8261,7 +8604,7 @@ do
             DragPrevMax = Max
 
             for _, OtherRow in Pool do
-                OtherRow:UpdateButton()
+                OtherRow:UpdateButton(true)
             end
         end
 
@@ -8317,7 +8660,7 @@ do
             Row.Image = Image
             Row.Button = Button
 
-            function Row:UpdateButton()
+            function Row:UpdateButton(Animate: boolean?)
                 local Entry = Row.Entry
                 if not Entry then
                     return
@@ -8332,11 +8675,31 @@ do
 
                 Row.Selected = Selected and true or false
 
-                Container.BackgroundTransparency = Selected and 0 or 1
-                Button.TextTransparency = Entry.IsDisabled and 0.8 or Selected and 0 or 0.5
+                local TargetContainerTransparency = Selected and 0 or 1
+                local TargetButtonTransparency = Entry.IsDisabled and 0.8 or Selected and 0 or 0.5
+                local TargetImageTransparency = Entry.IsDisabled and 0.8 or Selected and 0 or 0.5
 
-                if Entry.ValueImage then
-                    Image.ImageTransparency = Entry.IsDisabled and 0.8 or Selected and 0 or 0.5
+                local IsAnimated, AnimationInfo = MenuTable.Animated()
+                if Animate and IsAnimated then
+                    TweenService:Create(Container, AnimationInfo, {
+                        BackgroundTransparency = TargetContainerTransparency,
+                    }):Play()
+                    TweenService:Create(Button, AnimationInfo, {
+                        TextTransparency = TargetButtonTransparency,
+                    }):Play()
+
+                    if Entry.ValueImage then
+                        TweenService:Create(Image, AnimationInfo, {
+                            ImageTransparency = TargetImageTransparency,
+                        }):Play()
+                    end
+                else
+                    Container.BackgroundTransparency = TargetContainerTransparency
+                    Button.TextTransparency = TargetButtonTransparency
+
+                    if Entry.ValueImage then
+                        Image.ImageTransparency = TargetImageTransparency
+                    end
                 end
             end
 
@@ -8363,11 +8726,11 @@ do
                     end
 
                     for _, OtherRow in Pool do
-                        OtherRow:UpdateButton()
+                        OtherRow:UpdateButton(true)
                     end
                 end
 
-                Row:UpdateButton()
+                Row:UpdateButton(true)
                 Dropdown:Display()
 
                 Library:UpdateDependencyBoxes()
@@ -8542,7 +8905,7 @@ do
 
             Dropdown:Display()
             for _, Row in Pool do
-                Row:UpdateButton()
+                Row:UpdateButton(true)
             end
 
             if not Dropdown.Disabled then
@@ -9826,6 +10189,30 @@ function Library:SetBackgroundImage(Image: string | number)
     Library:UpdateColorsUsingRegistry()
 end
 
+local function GetNotifyPriority(Data): number
+    return Data.Priority or Library.NotifyPriority.Normal
+end
+
+local function InsertNotifyOrdered(FakeBackground: Frame, Data)
+    if Data.Priority == nil then
+        Data.Priority = Library.NotifyPriority.Normal
+    end
+    if Data.SentAt == nil then
+        Data.SentAt = os.clock()
+    end
+
+    local InsertAt = #NotifyOrder + 1
+    for Index, ExistingBackground in NotifyOrder do
+        local ExistingData = Library.Notifications[ExistingBackground]
+        if ExistingData and GetNotifyPriority(ExistingData) > Data.Priority then
+            InsertAt = Index
+            break
+        end
+    end
+
+    table.insert(NotifyOrder, InsertAt, FakeBackground)
+end
+
 function Library:UpdateNotificationPositions(Snap: boolean?)
     local IsLeft = Library.NotifySide:lower() == "left"
     local XScale = IsLeft and 0 or 1
@@ -9862,9 +10249,13 @@ function Library:SetNotifySide(Side: string)
         NotificationArea.Position = UDim2.new(1, -6, 0, 6)
     end
 
-    for FakeBackground in Library.Notifications do
+    for FakeBackground, NotifyData in Library.Notifications do
         if not (FakeBackground and FakeBackground.Parent) then continue end
         FakeBackground.AnchorPoint = if IsLeft then Vector2.new(0, 0) else Vector2.new(1, 0)
+
+        if NotifyData.RefreshPriorityIndicator then
+            NotifyData:RefreshPriorityIndicator()
+        end
     end
 
     if Library.UpdateNotificationPositions then
@@ -9896,11 +10287,13 @@ function Library:Notify(...)
         Data.IconColor = Info.IconColor
 
         Data.Volume = tonumber(Info.Volume) or 3
+        Data.Priority = tonumber(Info.Priority) or Library.NotifyPriority.Normal
     else
         Data.Description = tostring(Info)
         Data.Time = select(2, ...) or 5
         Data.SoundId = select(3, ...)
         Data.Volume = select(4, ...) or 3
+        Data.Priority = Library.NotifyPriority.Normal
     end
     Data.Destroyed = false
 
@@ -9958,6 +10351,56 @@ function Library:Notify(...)
         PaddingTop = UDim.new(0, 8),
         Parent = ContentHolder,
     })
+
+    local PriorityIndicator: Frame?
+    local PriorityIndicatorConnection: RBXScriptConnection?
+
+    local IndicatorWidth = 8
+    local IndicatorGap = 6
+
+    local function SyncPriorityIndicatorSize()
+        if PriorityIndicator then
+            PriorityIndicator.Size = UDim2.fromOffset(IndicatorWidth, Holder.AbsoluteSize.Y)
+        end
+    end
+
+    local function UpdatePriorityIndicator()
+        if PriorityIndicatorConnection then
+            PriorityIndicatorConnection:Disconnect()
+            PriorityIndicatorConnection = nil
+        end
+        if PriorityIndicator then
+            PriorityIndicator:Destroy()
+            PriorityIndicator = nil
+        end
+
+        local Color = Library.NotifyPriorityColors[Data.Priority]
+        if Color then
+            local IsLeftSide = Library.NotifySide:lower() == "left"
+            local IndicatorPosition = IsLeftSide
+                and UDim2.new(1, IndicatorGap, 0, 0)
+                or UDim2.new(0, -(IndicatorGap + IndicatorWidth), 0, 0)
+
+            PriorityIndicator = New("Frame", {
+                AnchorPoint = Vector2.new(0, 0),
+                BackgroundColor3 = Color,
+                Position = IndicatorPosition,
+                Size = UDim2.fromOffset(IndicatorWidth, Holder.AbsoluteSize.Y),
+                Parent = Holder,
+            })
+            table.insert(
+                Library.Corners,
+                New("UICorner", {
+                    CornerRadius = UDim.new(0, Library.CornerRadius),
+                    Parent = PriorityIndicator,
+                })
+            )
+            Library:AddOutline(PriorityIndicator)
+
+            PriorityIndicatorConnection = Holder:GetPropertyChangedSignal("AbsoluteSize"):Connect(SyncPriorityIndicatorSize)
+        end
+    end
+    UpdatePriorityIndicator()
 
     local CloseButton
     if Data.Closable then
@@ -10144,6 +10587,30 @@ function Library:Notify(...)
         end
     end
 
+    function Data:RefreshPriorityIndicator()
+        UpdatePriorityIndicator()
+    end
+
+    function Data:SetPriority(NewPriority: number)
+        NewPriority = tonumber(NewPriority) or Library.NotifyPriority.Normal
+        if NewPriority == Data.Priority then
+            return
+        end
+
+        Data.Priority = NewPriority
+        UpdatePriorityIndicator()
+
+        if Library.Notifications[FakeBackground] then
+            local Idx = table.find(NotifyOrder, FakeBackground)
+            if Idx then
+                table.remove(NotifyOrder, Idx)
+            end
+
+            InsertNotifyOrdered(FakeBackground, Data)
+            Library:UpdateNotificationPositions()
+        end
+    end
+
     function Data:Destroy(Reason)
         if Data.Destroyed then
             return
@@ -10162,6 +10629,11 @@ function Library:Notify(...)
 
         if DeleteConnection then
             DeleteConnection:Disconnect()
+        end
+
+        if PriorityIndicatorConnection then
+            PriorityIndicatorConnection:Disconnect()
+            PriorityIndicatorConnection = nil
         end
 
         if FakeBackground then
@@ -10226,7 +10698,7 @@ function Library:Notify(...)
 
     Data.Holder = Holder
 
-    table.insert(NotifyOrder, FakeBackground)
+    InsertNotifyOrdered(FakeBackground, Data)
     Library.Notifications[FakeBackground] = Data
 
     Library:UpdateNotificationPositions()
@@ -10628,6 +11100,20 @@ function Library:CreateWindow(WindowInfo)
                 Parent = TopBar,
             })
             Library:ApplyLucideIcon(MoveIconImage, MoveIcon)
+
+            TopBar.MouseEnter:Connect(function()
+                Library.Registry[MoveIconImage].ImageColor3 = "AccentColor"
+                TweenService:Create(MoveIconImage, Library.TweenInfo, {
+                    ImageColor3 = Library.Scheme.AccentColor,
+                }):Play()
+            end)
+
+            TopBar.MouseLeave:Connect(function()
+                Library.Registry[MoveIconImage].ImageColor3 = "OutlineColor"
+                TweenService:Create(MoveIconImage, Library.TweenInfo, {
+                    ImageColor3 = Library.Scheme.OutlineColor,
+                }):Play()
+            end)
         end
 
         --// Bottom Bar \\--
@@ -10699,6 +11185,24 @@ function Library:CreateWindow(WindowInfo)
         })
         if ResizeIcon then
             Library:ApplyLucideIcon(WindowResizeIcon, ResizeIcon)
+        end
+
+        if WindowInfo.Resizable then
+            ResizeButton.MouseEnter:Connect(function()
+                Library.Registry[WindowResizeIcon].ImageColor3 = "AccentColor"
+                TweenService:Create(WindowResizeIcon, Library.TweenInfo, {
+                    ImageColor3 = Library.Scheme.AccentColor,
+                    ImageTransparency = 0,
+                }):Play()
+            end)
+
+            ResizeButton.MouseLeave:Connect(function()
+                Library.Registry[WindowResizeIcon].ImageColor3 = "FontColor"
+                TweenService:Create(WindowResizeIcon, Library.TweenInfo, {
+                    ImageColor3 = Library.Scheme.FontColor,
+                    ImageTransparency = 0.5,
+                }):Play()
+            end)
         end
 
         --// Tabs \\--
@@ -12515,6 +13019,7 @@ function Library:CreateWindow(WindowInfo)
             local Button = New("TextButton", {
                 AnchorPoint = Vector2.new(1, 0),
                 BackgroundColor3 = "MainColor",
+                ClipsDescendants = true,
                 Position = UDim2.fromScale(1, 0),
                 Size = UDim2.new(0, 63, 1, 0),
                 Text = "Execute",
@@ -12555,6 +13060,7 @@ function Library:CreateWindow(WindowInfo)
                     return
                 end
 
+                Library:CreateButtonRipple(Button, Input)
                 Callback(Box.Text)
             end)
         end
@@ -13032,6 +13538,7 @@ function Library:CreateWindow(WindowInfo)
                 BackgroundColor3 = BtnColor,
                 BorderColor3 = BtnOutline,
                 BackgroundTransparency = WaitTime > 0 and 0.5 or 0,
+                ClipsDescendants = true,
                 Size = UDim2.fromOffset(0, 26),
                 Text = "",
                 AutoButtonColor = false,
@@ -13054,10 +13561,13 @@ function Library:CreateWindow(WindowInfo)
             })
 
             local TextColor = Library.Scheme.FontColor
+            local RippleColor = "FontColor"
             if Variant == "Primary" then
                 TextColor = Library.Scheme.BackgroundColor
+                RippleColor = "BackgroundColor"
             elseif Variant == "Destructive" then
                 TextColor = Color3.new(1, 1, 1)
+                RippleColor = "WhiteColor"
             end
 
             local BtnLabel = New("TextLabel", {
@@ -13124,6 +13634,11 @@ function Library:CreateWindow(WindowInfo)
                 TweenService:Create(TextBtn, Library.TweenInfo, {
                     BackgroundColor3 = ActiveColor
                 }):Play()
+            end)
+
+            TextBtn.InputBegan:Connect(function(Input)
+                if not IsActive or not IsClickInput(Input) then return end
+                Library:CreateButtonRipple(TextBtn, Input, RippleColor)
             end)
 
             TextBtn.MouseButton1Click:Connect(function()
@@ -14069,6 +14584,7 @@ function Library:CreateLoading(LoadingInfo)
             local TextBtn = New("TextButton", {
                 BackgroundColor3 = BtnColor,
                 BorderColor3 = BtnOutline,
+                ClipsDescendants = true,
                 Size = UDim2.fromOffset(0, 26),
                 Text = "",
                 AutoButtonColor = false,
@@ -14090,10 +14606,13 @@ function Library:CreateLoading(LoadingInfo)
             })
 
             local TextColor = Library.Scheme.FontColor
+            local RippleColor = "FontColor"
             if Variant == "Primary" then
                 TextColor = Library.Scheme.BackgroundColor
+                RippleColor = "BackgroundColor"
             elseif Variant == "Destructive" then
                 TextColor = Color3.new(1, 1, 1)
+                RippleColor = "WhiteColor"
             end
 
             local BtnLabel = New("TextLabel", {
@@ -14121,6 +14640,11 @@ function Library:CreateLoading(LoadingInfo)
                 TweenService:Create(TextBtn, Library.TweenInfo, {
                     BackgroundColor3 = ActiveColor
                 }):Play()
+            end)
+
+            TextBtn.InputBegan:Connect(function(Input)
+                if not IsClickInput(Input) then return end
+                Library:CreateButtonRipple(TextBtn, Input, RippleColor)
             end)
 
             TextBtn.MouseButton1Click:Connect(function()
