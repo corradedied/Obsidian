@@ -8413,7 +8413,9 @@ do
             }):Play()
 
             Ball.BackgroundColor3 = Library.Scheme.FontColor
-            Library.Registry[Ball].BackgroundColor3 = "FontColor"
+            if Library.Registry[Ball] then
+                Library.Registry[Ball].BackgroundColor3 = "FontColor"
+            end
         end
 
         function Toggle:OnChanged(Func)
