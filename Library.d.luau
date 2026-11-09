@@ -251,6 +251,11 @@ export type SliderInfo = {
     AllowRightClickInput: boolean?,
 }
 
+export type DropdownDivider = {
+    DropdownDivider: true,
+    Title: string?,
+}
+
 export type DropdownInfo = {
     Text: string?,
     Values: { [any]: any },
@@ -261,11 +266,13 @@ export type DropdownInfo = {
     DragSelect: boolean?,
     MaxVisibleDropdownItems: number?,
     KeepDisabledValuePosition: boolean?,
+    AutoWidth: boolean?,
     SpecialType: ("Player" | "Team")?,
     ExcludeLocalPlayer: boolean?,
     EnablePlayerImages: boolean?,
     AllowNull: boolean?,
     Searchable: boolean?,
+    FormatValue: ((any) -> string)?,
     FormatDisplayValue: ((any) -> string)?,
     FormatListValue: ((any) -> string)?,
     Tooltip: string?,
@@ -1051,6 +1058,7 @@ export type TabInfo = {
     Description: string?,
     Tooltip: string?,
     Order: number?,
+    SubTabs: boolean?,
 }
 
 export type Tab = {
@@ -1068,7 +1076,20 @@ export type Tab = {
     Groupboxes: { [string]: Groupbox },
     Tabboxes: { [string]: Tabbox },
     DependencyGroupboxes: { [number]: DependencyGroupbox },
+    IsSubTab: boolean,
+    ParentTab: Tab?,
+    HasSubTabs: boolean,
+    SubTabs: { Tab },
+    ActiveSubTab: Tab?,
 
+    AddSubTab: (
+        self: Tab,
+        Info: TabInfo | string,
+        Icon: string?,
+        Description: string?,
+        Order: number?
+    ) -> Tab,
+    UpdateTabInfo: (self: Tab) -> (),
     UpdateWarningBox: (
         self: Tab,
         Info: { IsNormal: boolean?, LockSize: boolean?, Visible: boolean?, Title: string?, Text: string? }
@@ -1324,7 +1345,7 @@ export type Window = {
     GetSidebarWidth: (self: Window) -> number,
     SetSidebarWidth: (self: Window, Width: number) -> (),
     SetCompact: (self: Window, State: boolean) -> (),
-    ShowTabInfo: (self: Window, Name: string, Description: string) -> (),
+    ShowTabInfo: (self: Window, Name: string, Description: string?, RichText: boolean?) -> (),
     HideTabInfo: (self: Window) -> (),
     AddTab: (
         self: Window,
@@ -1493,6 +1514,7 @@ export type Library = {
     GetDarkerColor: (self: Library, Color: Color3) -> Color3,
     GetKeyString: (self: Library, KeyCode: Enum.KeyCode) -> string,
     GetTextBounds: (self: Library, Text: string, Font: Font, Size: number, Width: number?) -> (number, number),
+    DropdownDivider: (self: Library, Title: string?) -> DropdownDivider,
     MouseIsOverFrame: (self: Library, Frame: GuiObject, Mouse: Vector2) -> boolean,
     IsInsideFrame: (self: Library, ParentFrame: GuiObject, Frame: GuiObject) -> boolean,
     SafeCallback: (self: Library, Func: (...any) -> ...any, ...any) -> ...any,

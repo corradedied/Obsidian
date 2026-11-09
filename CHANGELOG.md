@@ -1,3 +1,21 @@
+## 08.11.2026
+
+```diff
+[features]
++ TopLeft, TopRight, BottomLeft and BottomRight options for NotifySide and Library:SetNotifySide
++ FormatValue option for Dropdowns (used for both the display and list values when FormatDisplayValue or FormatListValue are not set)
++ AutoWidth option for Dropdowns (widens the list so every value is fully visible)
++ Dividers for Dropdowns (Library:DropdownDivider(Title))
++ SubTabs (Tab:AddSubTab(Name, Icon), requires Tab with SubTabs enabled)
+
+[changes]
++ Dropdown now support rich text
++ Refactored window fade animation to use CanvasGroup (the UI will look blurry during the animation)
+
+[fixes]
++ Fixed divider text being slightly off-center vertically
+```
+
 ## 06.11.2026
 
 ```diff
