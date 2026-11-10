@@ -287,6 +287,7 @@ local Library = {
     --// Signals \\--
     Signals = {},
     UnloadSignals = {},
+    ToggleChangedListeners = {},
 
     OriginalMinSize = Vector2.new(480, 360),
     MinSize = Vector2.new(480, 360),
@@ -2374,6 +2375,42 @@ function Library:SafeCallback(Func: (...any) -> ...any, ...: any)
     end
 
     return table.unpack(Result, 2, Result.n)
+end
+
+--// Toggle Changed Event \\--
+function Library:OnToggleChanged(Func: (Idx: string, Toggle: any, Value: boolean) -> ())
+    assert(typeof(Func) == "function", "Func must be a function.")
+
+    local Listener = {
+        Connected = true,
+        Func = Func,
+    }
+
+    function Listener:Disconnect()
+        if not Listener.Connected then
+            return
+        end
+
+        Listener.Connected = false
+
+        local Index = table.find(Library.ToggleChangedListeners, Listener)
+        if Index then
+            table.remove(Library.ToggleChangedListeners, Index)
+        end
+    end
+
+    table.insert(Library.ToggleChangedListeners, Listener)
+
+    return Listener
+end
+
+function Library:FireToggleChanged(Toggle: any)
+    -- Cloned so a listener can disconnect itself (or others) while the event is firing
+    for _, Listener in table.clone(Library.ToggleChangedListeners) do
+        if Listener.Connected then
+            Library:SafeCallback(Listener.Func, Toggle.Idx, Toggle, Toggle.Value)
+        end
+    end
 end
 
 function GetOverlappingDraggable(UI: GuiObject, TargetPos: Vector2?)
@@ -8150,6 +8187,7 @@ do
 
             Library:SafeCallback(Toggle.Callback, Toggle.Value)
             Library:SafeCallback(Toggle.Changed, Toggle.Value)
+            Library:FireToggleChanged(Toggle)
         end
 
         function Toggle:SetValue(Value)
@@ -8228,6 +8266,7 @@ do
         table.insert(Groupbox.Elements, Toggle)
 
         Toggle.Default = Toggle.Value
+        Toggle.Idx = Idx
 
         Toggles[Idx] = Toggle
 
@@ -8429,6 +8468,7 @@ do
 
             Library:SafeCallback(Toggle.Callback, Toggle.Value)
             Library:SafeCallback(Toggle.Changed, Toggle.Value)
+            Library:FireToggleChanged(Toggle)
         end
 
         function Toggle:SetValue(Value)
@@ -8507,6 +8547,7 @@ do
         table.insert(Groupbox.Elements, Toggle)
 
         Toggle.Default = Toggle.Value
+        Toggle.Idx = Idx
 
         Toggles[Idx] = Toggle
 
@@ -16914,6 +16955,7 @@ function Library:Unload()
 
     table.clear(Options)
     table.clear(Toggles)
+    table.clear(Library.ToggleChangedListeners)
     table.clear(Buttons)
     table.clear(Labels)
     table.clear(Tooltips)
