@@ -7094,7 +7094,9 @@ do
 
             Gear.Active = not Disabled
             Gear.BackgroundColor3 = Disabled and Library.Scheme.BackgroundColor or Library.Scheme.MainColor
-            Library.Registry[Gear].BackgroundColor3 = Disabled and "BackgroundColor" or "MainColor"
+            if Library.Registry[Gear] then
+                Library.Registry[Gear].BackgroundColor3 = Disabled and "BackgroundColor" or "MainColor"
+            end
             SetIconProperties(Icon, { ImageTransparency = Disabled and 0.8 or (SettingsMenu.Active and 0 or 0.5) })
 
             if Disabled then
